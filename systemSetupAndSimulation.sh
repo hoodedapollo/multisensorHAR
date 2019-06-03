@@ -85,8 +85,8 @@ reasoner = Reasoner(selectionStartegy)
 
 #*****************************************************************************
 # SIMULATION
-tiSim = 3000   #3000
-tfSim = 3150 #45000
+tiSim = 3000   #3000 times step (30 Hz -> 30 steps per second) sec = timsteps / freq
+tfSim = 3150 #45000  times step (30 Hz -> 30 steps per second) sec = timsteps / freq
 
 selectedActivityName = np.empty((tfSim-tiSim, len(sensors)), dtype=object)
 resultantActivityName = np.empty(tfSim-tiSim, dtype=object)
@@ -102,8 +102,9 @@ for t in range(tiSim, tfSim):
 
 #*****************************************************************************
 # PLOT
-tiPlot = 3030
-tfPlot = 3120
+tiPlot = 3030 # times step (30 Hz -> 30 steps per second) sec = timsteps / freq
+tfPlot = 3120 # times step (30 Hz -> 30 steps per second) sec = timsteps / freq
+
 pyplotter = PyPlotter(tiSim, tfSim, activityCategory, imuSensorsDataFrame, person, session)
 for i in range(len(sensorSystems)):
     pyplotter.plotSensorSystemErrors(sensorSystems[i], 
