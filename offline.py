@@ -56,7 +56,7 @@ class Buffer(object):
     ----------
     ringBuffer : numpy_ringbuffer RingBuffer object
         the circular buffer
-    lookback : int
+    windowLength : int
         the capacity of the buffer
     sensorChannels : int
         the number of features of the multivariate timeseries whose
@@ -70,10 +70,10 @@ class Buffer(object):
         returns all the elements in the buffer as a numpy array
     """ 
 
-    def __init__(self, lookback, sensorChannels):
-        self.ringBuffer = RingBuffer(capacity=lookback, dtype=(float, sensorChannels))
+    def __init__(self, windowLength, sensorChannels):
+        self.ringBuffer = RingBuffer(capacity=windowLength, dtype=(float, sensorChannels))
         self.sensorChannels = sensorChannels
-        self.lookback = lookback    
+        self.windowLength = windowLength    
     
     def append(self, sensorData):
         """adds a numpy array of shape = (sensorChannels,) to the buffer after its last element"""
@@ -84,11 +84,11 @@ class Buffer(object):
         """returns all the elements in the buffer as a numpy array
 
         when the buffer is full the numpy array which is returned has 
-        shape = (lookback, sensorChannels) otherwise shape[0] of the
+        shape = (windowLength, sensorChannels) otherwise shape[0] of the
         returned numpy array is equal to the number of elements in the buffer
         """
         if not self.ringBuffer:  # first time when buffer is empty
-            return np.zeros((1, self.lookback, self.sensorChannels)) 
+            return np.zeros((1, self.windowLength, self.sensorChannels)) 
         return np.array(self.ringBuffer)
 
 class Standardizer(object):
@@ -173,7 +173,7 @@ class MapeStrategy(object):
     def evaluate(self, yPred, yTrue):
         diff = abs((yTrue - yPred) / abs(yPred))
         return 100. * np.mean(diff)
-    
+
 class ActivityModule(object):
     """a class that represents the basic module of the classification system
     
@@ -428,13 +428,14 @@ class ProbabilityEvaluator(object):
     
 class PyPlotter(object):
     """a class that represents the scope of he simulation"""
-    def __init__(self, tiSim, tfSim, activityCategory, imuSensorsDataFrame, person, session):
+    def __init__(self, tiSim, tfSim, activityCategory, imuSensorsDataFrame, person, session, groundTruthFreq = 30):
         self.tiSim = tiSim
         self.tfSim = tfSim
         self.activityCategory = activityCategory
         self.imuSensorsDataFrame = imuSensorsDataFrame
         self.imuSensors = IMUSensors(imuSensorsDataFrame)
         self.activities = Activities()
+        self.groundTruthFreq = groundTruthFreq
 
         self.colorDict = {
             'locomotion' : {
@@ -461,7 +462,7 @@ class PyPlotter(object):
             },
         }
     
-    def plotSensorSystemErrors(self,  sensorSystem, sensorSystemErrors, selectedActivityName, tiPlot, tfPlot, figsize = (400,10), top = 2, toFile = False):
+    def plotSensorSystemErrors(self,  sensorSystem, sensorSystemErrors, selectedActivityName, tiPlot, tfPlot, figsize = (400,10), top = 2, toFile = False, predfreq = 30):
         """ plot the errors, the ground truth and the predicted labels of a sensor system
         
         Parameters
@@ -489,7 +490,7 @@ class PyPlotter(object):
         # plot the errors of all the activity modules that compose the sensor system
         for i in range(sensorSystemErrors.shape[-1]):
             activityId = self.activities.dict[self.activityCategory][activityNames[i]]
-            plt.plot(range(tiPlot, tfPlot), 
+            plt.plot(np.array(range(tiPlot, tfPlot))/predfreq, 
                      sensorSystemErrors[tiPlot-self.tiSim:tfPlot-self.tiSim, i], 
                      self.colorDict[self.activityCategory][activityId], label=activityNames[i])
         
@@ -505,30 +506,32 @@ class PyPlotter(object):
 
         # plot the groundtruth labels as background colors in the top half of the plot 
         for i, item in enumerate(trueSlices):
-            plt.axvspan(item.start + tiPlot, item.stop + tiPlot,                            # start is inclusive, stop is exclusive
+            plt.axvspan((item.start + tiPlot)/self.groundTruthFreq, (item.stop + tiPlot)/self.groundTruthFreq,                           
                         facecolor=self.colorDict[self.activityCategory][trueLabels[i]], 
                         alpha=0.3, 
                         ymin=0, ymax=0.5)
 
         # plot the predicted labels as background colors in the bottom half of the plot 
         for i, item in enumerate(predictedSlices):
-            plt.axvspan(item.start + tiPlot, item.stop + tiPlot,                            # start is inclusive, stop is exclusive      
+            plt.axvspan((item.start + tiPlot)/predfreq, (item.stop + tiPlot)/predfreq,                            
                         facecolor=self.colorDict[self.activityCategory][predictedLabels[i]], 
                         alpha=0.3, 
                         ymin=0.5, ymax=1)
 
-        plt.text(tiPlot, 0.75*top, r'PREDICTED', fontsize = 20)
-        plt.text(tiPlot, 0.25*top, r'TRUE', fontsize = 20)  
+        plt.text(tiPlot/self.groundTruthFreq, 0.75*top, r'PREDICTED', fontsize = 20)
+        plt.text(tiPlot/self.groundTruthFreq, 0.25*top, r'TRUE', fontsize = 20)  
         
-        major_ticks = np.arange(tiPlot, tfPlot, 30)
-        minor_ticks = np.arange(tiPlot, tfPlot, 15)
+        major_ticks = np.arange(tiPlot/self.groundTruthFreq, tfPlot/self.groundTruthFreq, 1)
+        minor_ticks = np.arange(tiPlot/self.groundTruthFreq, tfPlot/self.groundTruthFreq, 0.5)
         ax.set_xticks(major_ticks)
         ax.set_xticks(minor_ticks, minor=True)
         plt.grid(b=True, which='both', axis='x')
 
-        plt.xlim(left=tiPlot)
+        plt.xlim(left=tiPlot/self.groundTruthFreq)
         plt.ylim(top=top, bottom = 0)
-    
+
+        plt.ylabel('seconds')
+
         plt.legend(loc = 'upper left')
 
         if toFile:
@@ -537,7 +540,7 @@ class PyPlotter(object):
         else:
             plt.show()
     
-    def plotSelectedVsTrue(self, selectedActivityName, tiPlot, tfPlot, figsize = (400,10), top = 2, toFile = False):
+    def plotSelectedVsTrue(self, selectedActivityName, tiPlot, tfPlot, figsize = (400,10), top = 2, toFile = False, predfreq = 30):
         fig = plt.figure(figsize=figsize)
         ax = fig.add_subplot(1, 1, 1)
 
@@ -553,29 +556,30 @@ class PyPlotter(object):
 
         # plot the groundtruth labels as background colors in the top half of the plot 
         for i, item in enumerate(trueSlices):
-            plt.axvspan(item.start + tiPlot, item.stop + tiPlot, 
+            plt.axvspan((item.start + tiPlot)/self.groundTruthFreq, (item.stop + tiPlot)/self.groundTruthFreq, 
                         facecolor=self.colorDict[self.activityCategory][trueLabels[i]], 
                         alpha=0.3, 
                         ymin=0, ymax=0.5)
 
         # plot the predicted labels as background colors in the bottom half of the plot 
         for i, item in enumerate(predictedSlices):
-            plt.axvspan(item.start + tiPlot, item.stop + tiPlot, 
+            plt.axvspan((item.start + tiPlot)/predfreq, (item.stop + tiPlot)/predfreq, 
                         facecolor=self.colorDict[self.activityCategory][predictedLabels[i]], 
                         alpha=0.3, 
                         ymin=0.5, ymax=1)
 
-        plt.text(tiPlot, 0.75*top, r'PREDICTED', fontsize = 20)
-        plt.text(tiPlot, 0.25*top, r'TRUE', fontsize = 20)  
+        plt.text(tiPlot/self.groundTruthFreq, 0.75*top, r'PREDICTED', fontsize = 20)
+        plt.text(tiPlot/self.groundTruthFreq, 0.25*top, r'TRUE', fontsize = 20)  
                 
-        major_ticks = np.arange(tiPlot, tfPlot, 30)
-        minor_ticks = np.arange(tiPlot, tfPlot, 15)
+        major_ticks = np.arange(tiPlot/self.groundTruthFreq, tfPlot/self.groundTruthFreq, 1)
+        minor_ticks = np.arange(tiPlot/self.groundTruthFreq, tfPlot/self.groundTruthFreq, 0.5)
         ax.set_xticks(major_ticks)
         ax.set_xticks(minor_ticks, minor=True)
         plt.grid(b=True, which='both', axis='x')
 
-        plt.xlim(left=tiPlot)
+        plt.xlim(left=tiPlot/self.groundTruthFreq)
         plt.ylim(top=top, bottom = 0)
+        plt.ylabel('seconds')
 
         markers = []
         markerLabels = []
