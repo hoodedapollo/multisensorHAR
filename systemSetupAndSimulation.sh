@@ -29,8 +29,8 @@ baseDir = 'NNModels'   # NNModels base directory
 person = 'S1'
 session ='ADL1'
 
-activityCategory = 'locomotion'
-sensorNames = ['backImu', 'rlaImu', 'ruaImu', 'llaImu', 'luaImu']
+activityCategory = 'mlBothArms' # 'locomotion' or 'mlBothArms'
+sensorNames = ['backImu' , 'rlaImu', 'ruaImu', 'llaImu', 'luaImu']
 
 lookback = 30
 sensorChannels = 6
@@ -39,9 +39,9 @@ sensorChannels = 6
 activities = Activities()
 activityNames = activities.getNamesWithCategory(activityCategory)
 
-# # Select subsamples of activities (only for 'mlBothArms' activity Category)
-# ind = np.array([0,2,4,5,6,7,8,9,14,15,16])
-# activityNames = np.array(activityNames)[ind]
+# Select subsamples of activities (only for 'mlBothArms' activity Category)
+ind = np.array([0,2,4,5,6,7,8,9,14,15,16])
+activityNames = np.array(activityNames)[ind]
 
 print('\nSELECTED activity names:\n', activityNames)
 
