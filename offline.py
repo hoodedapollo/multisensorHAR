@@ -447,15 +447,21 @@ class PyPlotter(object):
             },
 
             'mlBothArms' : {
-             0     : 'k',             # 'nullActivity'   
-             406516   : 'g',          # 'OpenDoor1'      
-             404516   : 'b',          # 'CloseDoor1'      
+             0       : 'k',             # 'nullActivity'   
+             406516   : 'g',          # 'OpenDoor1'    
+             406517 : 'k',            # 'OpenDoor2' (nullActivity)     
+             404516   : 'b',          # 'CloseDoor1' 
+             404517 : 'k',            # 'CloseDoor2' (nullActivity)     
              406520    : 'r',         # 'OpenFridge'      
              404520    : 'y',         # 'CloseFridge'        
              406505    : 'm',         # 'OpenDishwasher'       
              404505    : 'c',         # 'CloseDishwasher'  
              406519   : '#581845',    # 'OpenDrawer1'    
              404519   : '#FC33FF',    # 'CloseDrawer1'   
+             406511 : 'k',             #'OpenDrawer2'     (nullActivity)
+             404511 : 'k',             # 'CloseDrawer2'   (nullActivity)
+             406508 : 'k',             # 'OpenDrawer3'    (nullActivity)
+             404508 : 'k',             # 'CloseDrawer3'   (nullActivity)
              408512    : '#33FFE3',   # 'CleanTable'     
              407521   : '#FFC300',    # 'DrinkfromCup'   
              405506    : '#5BFB05',   # 'ToggleSwitch'   
@@ -530,7 +536,7 @@ class PyPlotter(object):
         plt.xlim(left=tiPlot/self.groundTruthFreq)
         plt.ylim(top=top, bottom = 0)
 
-        plt.ylabel('seconds')
+        plt.xlabel('seconds')
 
         plt.legend(loc = 'upper left')
 
@@ -579,7 +585,8 @@ class PyPlotter(object):
 
         plt.xlim(left=tiPlot/self.groundTruthFreq)
         plt.ylim(top=top, bottom = 0)
-        plt.ylabel('seconds')
+        
+        plt.xlabel('seconds')
 
         markers = []
         markerLabels = []
