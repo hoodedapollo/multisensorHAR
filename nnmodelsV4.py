@@ -41,7 +41,9 @@ class NNModel(object):
     Methods
     -------
     setLookback(lookback)
+    
     setTrainMeanAndStd(trainMean, trainStd)
+
     compile(modelOptimizer = 'adam', modelLoss = 'mae')
         Compliles the keras model
     fit(trainSamples = None, trainTargets = None, fitParams = None)
