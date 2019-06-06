@@ -133,4 +133,30 @@ class Results(object):
         evalDf.index.name = 'data'
 
         return evalDf
+    
+    def modelsEvaluationDataframe(self, activityName):
+        """ returns the dataframe were the columns are the model errors on the activtyName test data
+        
+        each column represent a different model (specified by the column index name), each row is the
+        error evaluated using on test sample and on test target
 
+        Parameters
+        ----------
+        activityName : str
+            name of the activity data on wich you want to test all the models
+        
+        Returns
+        -------
+        pandas dataframe        
+        """
+
+        for i, nnModel in enumerate(self.models):
+            if nnModel.identifier['activityName'] == activityName:
+                break
+
+        errors = self.modelsError(self.testSamplesList[i], self.testTargetsList[i])
+        columns = [nnModel.identifier['activityName'] for nnModel in self.models]
+        errorsDf = pd.DataFrame(errors, columns = columns)
+
+        return dict(zip(activityName, errorsDf))
+            
