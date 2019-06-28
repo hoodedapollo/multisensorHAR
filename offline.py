@@ -276,7 +276,7 @@ class ActivityModule(object):
         float
             the prediction error
         dictionary
-            the id attribute
+            the identifier attribute
         """
 
         if scaling == 'standardized':
@@ -328,7 +328,8 @@ class SingleSensorSystem(object):
         Returns
         -------
         list of (float, dictionary)
-            the float is the error and the dictionary is the identifier
+            the float is the error and the dictionary is the identifier of the corresponding 
+            activity module, its keys are 'sensor', 'activityCategory', 'activityName'
         """
 
         errorsAndIds = []
@@ -345,14 +346,16 @@ class Classifier(object):
         returns the id of the activity module output with lowest prediction error 
         among all activity modules
     """
-    def __init__(self, classifyStrategy):
+    def __init__(self, classifyStrategy, sensor = None, activityCategory = None):
         self.classifyStrategy = classifyStrategy
+        self.identifier = {
+            'activityCategory' : activityCategory,
+            'sensor' : sensor,
+        }
     
     def classify(self, errorsAndIds):
         """ returns the id of the activity module outputs that has been chosen by the strategy
         
-        returns the the second element of args
-
         Parameters
         ----------
         args : (error, activityId) 
@@ -362,7 +365,8 @@ class Classifier(object):
         Returns
         -------
         dictionary
-            activityId of the activity module with lowest error
+            activityId of the activity module with lowest error. the dictionary keys 
+            are  'sensor', 'activityCategory', 'activityName'
         """
         return self.classifyStrategy.classify(errorsAndIds)
         
@@ -389,6 +393,84 @@ class ArgMinStrategy(object):
         activityId = errorsAndIds[np.argmin(errors)][1]  # fancy indexing
         return activityId
 
+class WindowSelector(object):
+    """ a class that represnt the module that chooses and id over a temporal sequence of ids
+    
+
+    Attributes
+    ----------
+    windowLength : int 
+        number of activity identifiers in the sequence
+    selectionStrategy : a startegy object to select the ids
+   
+    buffer : list of dictionary
+        each dictionary is an activity identifier, its keys 
+        are 'sensor', 'activityCategory', 'activityName'
+    
+    Methods
+    -------
+    isFull()
+        return true if the number of id in the list is equal to windowLength attribute
+    
+    appendId(identifier)
+        appends the identifier to the buffer attribute if it is not full
+    
+    selctIdAndClearBuffer()
+        uses the sectionStrtategy attribute to select the id frm those in the buffer
+        and clear the buffer
+
+    """
+    def __init__(self, windowLength, selectionStrategy,  sensor = None, activityCategory = None):
+        self.windowLength = windowLength
+        self.selectionStartegy = selectionStrategy
+        self.buffer = []
+
+        self.identifier = {
+            'activityCategory' : activityCategory,
+            'sensor' : sensor,
+        }
+        
+    def isFull(self):
+        return len(self.buffer) == self.windowLength
+    
+    def appendId(self, identifier):
+        if not self.isFull():
+            self.buffer.append(identifier)
+    
+    def selectActivity(self, activityNames):
+        """ returns activityName from a list of activityNames based on the startegy attribute
+        
+        Parameters
+        ----------
+        activityNames : list of str
+
+        Returns
+        -------
+        str
+            the activityName
+        """
+        
+        return self.selectionStartegy.selectActivity(activityNames)
+
+    def selectIdAndClearBuffer(self):
+        """returns the id whose activity name is chosen by the selectionStartegy atrribute selectActivity method
+
+        and clears the buffer attribute
+
+        Returns
+        dictionary
+            whose activity name is chosen by the selectionStartegy atrribute selectActivity method
+            the dictionary keys 
+            are  'sensor', 'activityCategory', 'activityName'
+        """
+        activityNames = [identifier['activityName'] for identifier in self.buffer]
+        selectedActivityName = self.selectActivity(activityNames)
+        selectedId = self.identifier
+        selectedId['activityName'] = selectedActivityName
+        self.buffer = []
+        
+        return selectedId
+
 class Reasoner(object):
     """ a clas to represent the module that aggregates informations from the sensors systems"""
     def __init__(self, selectionStrategy): 
@@ -397,13 +479,14 @@ class Reasoner(object):
     def selectActivity(self, activities):
         return self.selectionStrategy.selectActivity(activities)
         
-class MostFrequentStrartegy(object):
+class MostFrequentStrategy(object):
     def selectActivity(self, activities):
-        """returns the most frequent activity i the activities list
+        """returns the most frequent activity in the activities list
         
         Parameters
         ----------
-        activities : list
+        activities : list of str
+            each the str is an activityName
         """
         activitiesList = list(activities)   # in case it is a np.array
         return max(set(activitiesList), key = activitiesList.count)   # when mutiple activities have the same count retuns one (not specified)  -> address the problem
@@ -468,7 +551,7 @@ class PyPlotter(object):
             },
         }
     
-    def plotSensorSystemErrors(self,  sensorSystem, sensorSystemErrors, selectedActivityName, tiPlot, tfPlot, figsize = (400,10), top = 2, toFile = False, predfreq = 30):
+    def plotSensorSystemErrors(self,  sensorSystem, sensorSystemErrors, selectedActivityName, tiPlot, tfPlot, figsize = (400,10), top = 2, toFile = False, windowLength = 1):
         """ plot the errors, the ground truth and the predicted labels of a sensor system
         
         Parameters
@@ -488,6 +571,8 @@ class PyPlotter(object):
         toFile : bool
             if true the plot instead of being shown is saved to file
         """
+        predfreq = self.groundTruthFreq / windowLength
+
         sensorName = sensorSystem.identifier['sensor']
         activityNames = [activityModule.identifier['activityName'] for activityModule in sensorSystem.activityModules]
         fig = plt.figure(figsize=figsize)
@@ -496,30 +581,35 @@ class PyPlotter(object):
         # plot the errors of all the activity modules that compose the sensor system
         for i in range(sensorSystemErrors.shape[-1]):
             activityId = self.activities.dict[self.activityCategory][activityNames[i]]
-            plt.plot(np.array(range(tiPlot, tfPlot))/predfreq, 
+            plt.plot(np.array(range(tiPlot, tfPlot))/self.groundTruthFreq,   #   sensor errors timesteps are at sensor frequency 
                      sensorSystemErrors[tiPlot-self.tiSim:tfPlot-self.tiSim, i], 
                      self.colorDict[self.activityCategory][activityId], label=activityNames[i])
         
-        # find the slices of the groudtruth
+        # find the slices of the groudtruth (groundtruth is at sensor frequency)
         sensorImuDf = self.imuSensors.singleSensorDf(sensorName)
         trueMultiLabelSequence = MultiLabelSequence(sensorImuDf['labels', self.activityCategory].values[tiPlot:tfPlot])
         trueSlices, trueLabels = trueMultiLabelSequence.getSlicesAndLabelsLists()
 
         # find the slices of the predicted labels
         activityNumId = [self.activities.dict[self.activityCategory][activityName] for activityName in selectedActivityName]
-        predictedMultiLabelSequence = MultiLabelSequence(activityNumId[tiPlot-self.tiSim:tfPlot-self.tiSim])
+        
+        # the activity id is saved in list (frequency = sensorfrequency / windowlength) starting from tiSim timestep, 
+        # here select subsequences starting from the index correspondin to tiPlot timstep
+        predictedMultiLabelSequence = MultiLabelSequence(activityNumId[(tiPlot-self.tiSim)//windowLength:(tfPlot-self.tiSim)//windowLength])     
         predictedSlices, predictedLabels = predictedMultiLabelSequence.getSlicesAndLabelsLists()
 
         # plot the groundtruth labels as background colors in the top half of the plot 
         for i, item in enumerate(trueSlices):
-            plt.axvspan((item.start + tiPlot)/self.groundTruthFreq, (item.stop + tiPlot)/self.groundTruthFreq,                           
+            plt.axvspan((item.start + tiPlot)/self.groundTruthFreq, (item.stop + tiPlot)/self.groundTruthFreq,   # divide by the sensor frequency to obtain the time in seconds                          
                         facecolor=self.colorDict[self.activityCategory][trueLabels[i]], 
                         alpha=0.3, 
                         ymin=0, ymax=0.5)
 
         # plot the predicted labels as background colors in the bottom half of the plot 
         for i, item in enumerate(predictedSlices):
-            plt.axvspan((item.start + tiPlot)/predfreq, (item.stop + tiPlot)/predfreq,                            
+            # divide tiPlot by the sensor frequency to obtain the time in seconds at which the first slice starts, the predicted labels are saved
+            # at predfrequency = sensorfrequency / windowlength  
+            plt.axvspan((item.start/predfreq + tiPlot/self.groundTruthFreq), (item.stop/predfreq + tiPlot/self.groundTruthFreq),                            
                         facecolor=self.colorDict[self.activityCategory][predictedLabels[i]], 
                         alpha=0.3, 
                         ymin=0.5, ymax=1)
@@ -542,11 +632,13 @@ class PyPlotter(object):
 
         if toFile:
             plt.savefig(f"{sensorSystem.identifier['sensor']}_errorplot.png", bbox_inches ='tight')
-            plt.close(fig) 
+            #plt.close(fig) 
         else:
             plt.show()
     
-    def plotSelectedVsTrue(self, selectedActivityName, tiPlot, tfPlot, figsize = (400,10), top = 2, toFile = False, predfreq = 30):
+    def plotSelectedVsTrue(self, selectedActivityName, tiPlot, tfPlot, figsize = (400,10), top = 2, toFile = False, windowLength = 1):
+        predfreq = self.groundTruthFreq / windowLength
+
         fig = plt.figure(figsize=figsize)
         ax = fig.add_subplot(1, 1, 1)
 
@@ -557,7 +649,7 @@ class PyPlotter(object):
 
         # find the slices of the predicted labels
         activityNumId = [self.activities.dict[self.activityCategory][activityName] for activityName in selectedActivityName]
-        predictedMultiLabelSequence = MultiLabelSequence(activityNumId[tiPlot-self.tiSim:tfPlot-self.tiSim])
+        predictedMultiLabelSequence = MultiLabelSequence(activityNumId[(tiPlot-self.tiSim)//windowLength:(tfPlot-self.tiSim)//windowLength])
         predictedSlices, predictedLabels = predictedMultiLabelSequence.getSlicesAndLabelsLists()
 
         # plot the groundtruth labels as background colors in the top half of the plot 
@@ -569,7 +661,7 @@ class PyPlotter(object):
 
         # plot the predicted labels as background colors in the bottom half of the plot 
         for i, item in enumerate(predictedSlices):
-            plt.axvspan((item.start + tiPlot)/predfreq, (item.stop + tiPlot)/predfreq, 
+            plt.axvspan((item.start/predfreq + tiPlot/self.groundTruthFreq), (item.stop/predfreq + tiPlot/self.groundTruthFreq),                            
                         facecolor=self.colorDict[self.activityCategory][predictedLabels[i]], 
                         alpha=0.3, 
                         ymin=0.5, ymax=1)
